@@ -6,17 +6,22 @@
 
 This Ansible role deploys a highly available Kubernetes cluster on-premise with separated API servers, load balancers, MetalLB, and Istio ingress controller.
 
-## 📋 Table of Contents
+## Table of Contents
 
-- [Architecture](#architecture)
-- [Prerequisites](#prerequisites)
-- [Quick Start](#quick-start)
-- [Installation](#installation)
-- [Configuration](#configuration)
-- [Post-Deployment](#post-deployment)
-- [Troubleshooting](#troubleshooting)
-- [Network Requirements](#network-requirements)
-- [Project Structure](#project-structure)
+- [Architecture](#-architecture)
+- [Prerequisites](#-prerequisites)
+- [Quick Start](#-quick-start)
+- [Installation](#-installation)
+- [Configuration](#-configuration)
+- [Post-Deployment](#-post-deployment)
+- [Troubleshooting](#-troubleshooting)
+- [Network Requirements](#-network-requirements)
+- [Project Structure](#-project-structure)
+- [Key Features](#-key-features)
+- [Notes](#notes)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
 
 ## 🏗️ Architecture
 
@@ -488,7 +493,7 @@ Available tags:
 - `preflight` - Pre-flight checks
 - `validation` - Validation tasks
 
-## 📝 Notes
+## Notes
 
 - The first master node (`k8s-master-01`) is responsible for initializing the cluster and installing CNI, MetalLB, and Istio
 - API server nodes run Keepalived in master/backup mode with automatic failover
@@ -499,15 +504,15 @@ Available tags:
 - Sysctl settings are persisted in `/etc/sysctl.d/99-kubernetes.conf`
 - Kernel modules (br_netfilter, overlay) are checked before loading
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
 
-## 📄 License
+## License
 
 This project is provided as-is for deployment purposes.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - [Kubernetes](https://kubernetes.io/)
 - [Ansible](https://www.ansible.com/)
