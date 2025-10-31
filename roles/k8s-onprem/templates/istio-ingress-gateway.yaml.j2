@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: istio-ingressgateway
+  namespace: istio-system
+  annotations:
+    metallb.universe.tf/address-pool: default-pool
+spec:
+  type: LoadBalancer
+  selector:
+    istio: ingressgateway
+    app: istio-ingressgateway
+  ports:
+    - name: http2
+      port: 80
+      targetPort: 8080
+    - name: https
+      port: 443
+      targetPort: 8443
+    - name: tcp
+      port: 31400
+      targetPort: 31400
+    - name: tls
+      port: 15443
+      targetPort: 15443
+

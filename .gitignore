@@ -1,0 +1,14 @@
+*.retry
+*.log
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.DS_Store
+inventory
+group_vars/*.yml
+!group_vars/all.yml.example
+

@@ -1,0 +1,130 @@
+---
+# Prerequisites tasks
+- name: Ensure system is up to date
+  package:
+    name: "*"
+    state: latest
+  when: ansible_os_family == "RedHat"
+
+- name: Install required system packages
+  package:
+    name:
+      - curl
+      - wget
+      - apt-transport-https
+      - ca-certificates
+      - gnupg
+      - lsb-release
+      - net-tools
+      - iproute2
+      - conntrack
+      - socat
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Install required system packages (RHEL)
+  package:
+    name:
+      - curl
+      - wget
+      - yum-utils
+      - device-mapper-persistent-data
+      - lvm2
+      - net-tools
+      - iproute
+      - conntrack-tools
+      - socat
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Disable swap
+  command: swapoff -a
+  when: disable_swap | bool
+  changed_when: false
+
+- name: Disable swap permanently
+  lineinfile:
+    path: /etc/fstab
+    regexp: '^.*swap'
+    state: absent
+  when: disable_swap | bool
+
+- name: Disable SELinux
+  selinux:
+    state: disabled
+  when: disable_selinux | bool and ansible_selinux.status != "disabled"
+
+- name: Configure Kubernetes sysctl settings
+  copy:
+    content: |
+      # IP Forwarding
+      net.ipv4.ip_forward = 1
+      net.ipv6.conf.all.forwarding = 1
+      # Bridge networking
+      net.bridge.bridge-nf-call-iptables = 1
+      net.bridge.bridge-nf-call-ip6tables = 1
+    dest: /etc/sysctl.d/99-kubernetes.conf
+    mode: '0644'
+  notify: reload sysctl
+
+- name: Enable IP forwarding (apply immediately)
+  sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    state: present
+    sysctl_set: true
+    reload: true
+  when: enable_ip_forwarding | bool
+
+- name: Enable IP forwarding for IPv6 (apply immediately)
+  sysctl:
+    name: net.ipv6.conf.all.forwarding
+    value: "1"
+    state: present
+    sysctl_set: true
+    reload: true
+  when: enable_ip_forwarding | bool
+
+- name: Configure bridge networking (apply immediately)
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+    sysctl_set: true
+    reload: true
+  loop:
+    - { name: net.bridge.bridge-nf-call-iptables, value: "1" }
+    - { name: net.bridge.bridge-nf-call-ip6tables, value: "1" }
+  ignore_errors: true
+
+- name: Check if br_netfilter module is loaded
+  command: lsmod | grep br_netfilter || true
+  register: br_netfilter_check
+  changed_when: false
+
+- name: Load br_netfilter module
+  modprobe:
+    name: br_netfilter
+    state: present
+  when: br_netfilter_check.stdout == ''
+
+- name: Check if overlay module is loaded
+  command: lsmod | grep overlay || true
+  register: overlay_check
+  changed_when: false
+
+- name: Load overlay module
+  modprobe:
+    name: overlay
+    state: present
+  when: overlay_check.stdout == ''
+
+- name: Ensure modules are loaded at boot
+  lineinfile:
+    path: /etc/modules-load.d/k8s.conf
+    line: "{{ item }}"
+    create: true
+  loop:
+    - br_netfilter
+    - overlay
+

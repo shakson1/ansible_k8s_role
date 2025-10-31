@@ -1,0 +1,50 @@
+---
+# Install Istio
+- name: Download Istio
+  get_url:
+    url: "https://github.com/istio/istio/releases/download/{{ istio_version }}/istio-{{ istio_version }}-linux-amd64.tar.gz"
+    dest: /tmp/istio-{{ istio_version }}-linux-amd64.tar.gz
+    mode: '0644'
+  when: inventory_hostname == groups['master'][0]
+
+- name: Extract Istio
+  unarchive:
+    src: /tmp/istio-{{ istio_version }}-linux-amd64.tar.gz
+    dest: /tmp
+    remote_src: true
+  when: inventory_hostname == groups['master'][0]
+
+- name: Install Istio CLI
+  copy:
+    src: "/tmp/istio-{{ istio_version }}/bin/istioctl"
+    dest: /usr/local/bin/istioctl
+    mode: '0755'
+    remote_src: true
+  when: inventory_hostname == groups['master'][0]
+
+- name: Install Istio with default profile
+  command: istioctl install --set values.defaultRevision=default -y
+  args:
+    chdir: "/tmp/istio-{{ istio_version }}"
+  when: inventory_hostname == groups['master'][0]
+  retries: 3
+  delay: 10
+
+- name: Wait for Istio to be ready
+  command: kubectl wait --for=condition=ready pod -l app=istiod -n istio-system --timeout=300s
+  when: inventory_hostname == groups['master'][0]
+  retries: 10
+  delay: 10
+  ignore_errors: true
+
+- name: Install Istio ingress gateway
+  template:
+    src: istio-ingress-gateway.yaml.j2
+    dest: /tmp/istio-ingress-gateway.yaml
+    mode: '0644'
+  when: inventory_hostname == groups['master'][0]
+
+- name: Apply Istio ingress gateway
+  command: kubectl apply -f /tmp/istio-ingress-gateway.yaml
+  when: inventory_hostname == groups['master'][0]
+

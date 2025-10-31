@@ -1,0 +1,26 @@
+---
+# Install MetalLB
+- name: Apply MetalLB manifest
+  command: kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/{{ metallb_version }}/config/manifests/metallb-native.yaml
+  when: inventory_hostname == groups['master'][0]
+  retries: 3
+  delay: 10
+
+- name: Wait for MetalLB to be ready
+  command: kubectl wait --namespace metallb-system --for=condition=ready pod --selector=app=metallb --timeout=300s
+  when: inventory_hostname == groups['master'][0]
+  retries: 10
+  delay: 10
+  ignore_errors: true
+
+- name: Create MetalLB IP address pool
+  template:
+    src: metallb-ip-pool.yaml.j2
+    dest: /tmp/metallb-ip-pool.yaml
+    mode: '0644'
+  when: inventory_hostname == groups['master'][0]
+
+- name: Apply MetalLB IP address pool
+  command: kubectl apply -f /tmp/metallb-ip-pool.yaml
+  when: inventory_hostname == groups['master'][0]
+

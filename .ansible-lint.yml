@@ -1,0 +1,12 @@
+---
+skip_list:
+  - yaml[line-length]
+  - name[casing]
+  - risky-shell-pipe
+  - experimental
+
+exclude_paths:
+  - .git/
+  - .venv/
+  - venv/
+

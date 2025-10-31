@@ -1,0 +1,7 @@
+---
+- name: Deploy Kubernetes On-Premise Cluster
+  hosts: all
+  become: true
+  roles:
+    - k8s-onprem
+

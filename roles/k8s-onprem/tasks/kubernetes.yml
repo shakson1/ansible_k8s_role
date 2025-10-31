@@ -1,0 +1,76 @@
+---
+# Install Kubernetes components
+- name: Add Kubernetes repository (Debian)
+  apt_repository:
+    repo: "deb https://pkgs.k8s.io/core:/stable:/v{{ k8s_version.split('.')[0] }}/deb/ /"
+    state: present
+    filename: kubernetes
+  when: ansible_os_family == "Debian"
+
+- name: Ensure keyrings directory exists (Debian)
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+  when: ansible_os_family == "Debian"
+
+- name: Add Kubernetes GPG key (Debian)
+  shell: |
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v{{ k8s_version.split('.')[0] }}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  args:
+    creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+  when: ansible_os_family == "Debian"
+
+- name: Add Kubernetes repository (RHEL)
+  yum_repository:
+    name: kubernetes
+    description: Kubernetes repository
+    baseurl: https://pkgs.k8s.io/core:/stable:/v{{ k8s_version.split('.')[0] }}/rpm/
+    gpgcheck: yes
+    gpgkey: https://pkgs.k8s.io/core:/stable:/v{{ k8s_version.split('.')[0] }}/rpm/repodata/repomd.xml.key
+    enabled: yes
+  when: ansible_os_family == "RedHat"
+
+- name: Install Kubernetes components
+  package:
+    name:
+      - kubelet={{ k8s_version }}-1.1
+      - kubeadm={{ k8s_version }}-1.1
+      - kubectl={{ k8s_version }}-1.1
+    state: present
+  when: ansible_os_family == "Debian"
+
+- name: Install Kubernetes components (RHEL)
+  package:
+    name:
+      - kubelet-{{ k8s_version }}
+      - kubeadm-{{ k8s_version }}
+      - kubectl-{{ k8s_version }}
+    state: present
+  when: ansible_os_family == "RedHat"
+
+- name: Hold Kubernetes packages (Debian)
+  dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop:
+    - kubelet
+    - kubeadm
+    - kubectl
+  when: ansible_os_family == "Debian"
+
+- name: Prevent Kubernetes packages from being updated (RHEL)
+  yum:
+    name:
+      - kubelet-{{ k8s_version }}
+      - kubeadm-{{ k8s_version }}
+      - kubectl-{{ k8s_version }}
+    disable_excludes: kubelet
+  when: ansible_os_family == "RedHat"
+
+- name: Enable kubelet service
+  systemd:
+    name: kubelet
+    enabled: true
+    daemon_reload: true
+

@@ -1,0 +1,106 @@
+---
+# Configure API server nodes
+- name: Install HAProxy
+  package:
+    name: haproxy
+    state: present
+  tags: api-server, packages
+
+- name: Include keepalived configuration
+  include_tasks: keepalived.yml
+  tags: api-server, keepalived
+
+- name: Configure HAProxy for API server load balancing
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart haproxy
+  tags: api-server, haproxy
+
+- name: Ensure HAProxy directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+  loop:
+    - /etc/haproxy/errors
+    - /var/lib/haproxy
+  tags: api-server, haproxy
+
+- name: Create HAProxy error files
+  copy:
+    content: |
+      HTTP/1.0 400 Bad request
+      Content-Type: text/html
+
+      <html><body><h1>400 Bad request</h1>
+      Your browser sent a request that this server could not understand.
+      </body></html>
+    dest: "/etc/haproxy/errors/{{ item }}.http"
+    owner: root
+    group: root
+    mode: '0644'
+  loop:
+    - "400"
+    - "403"
+    - "408"
+    - "500"
+    - "502"
+    - "503"
+    - "504"
+  tags: api-server, haproxy
+
+- name: Start and enable HAProxy
+  systemd:
+    name: haproxy
+    enabled: true
+    state: started
+    daemon_reload: true
+  tags: api-server, haproxy
+
+- name: Wait for HAProxy to be ready
+  wait_for:
+    port: "{{ api_server_port }}"
+    host: "0.0.0.0"
+    delay: 5
+    timeout: 30
+  tags: api-server, haproxy
+
+- name: Wait for VIP to be available on first API server
+  wait_for:
+    host: "{{ api_server_vip }}"
+    port: "{{ api_server_port }}"
+    delay: 10
+    timeout: 300
+  delegate_to: localhost
+  when: inventory_hostname == groups['api-server'][0]
+  tags: api-server, validation
+
+- name: Configure firewall for API server (firewalld)
+  firewalld:
+    port: "{{ api_server_port }}/tcp"
+    permanent: true
+    state: enabled
+    immediate: true
+  when: 
+    - firewall_type in ["auto", "firewalld"]
+    - ansible_os_family in ["RedHat", "Debian"]
+  ignore_errors: true
+  tags: api-server, firewall
+
+- name: Configure firewall for API server (ufw)
+  ufw:
+    rule: allow
+    port: "{{ api_server_port }}"
+    proto: tcp
+  when: 
+    - firewall_type in ["auto", "ufw"]
+    - ansible_os_family == "Debian"
+  ignore_errors: true
+  tags: api-server, firewall
+

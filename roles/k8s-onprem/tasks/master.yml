@@ -1,0 +1,158 @@
+---
+# Configure and initialize master nodes
+- name: Create kubeadm init configuration
+  template:
+    src: kubeadm-init-config.yaml.j2
+    dest: /tmp/kubeadm-init-config.yaml
+    mode: '0644'
+
+- name: Initialize Kubernetes cluster (first master only)
+  command: kubeadm init --config=/tmp/kubeadm-init-config.yaml --upload-certs
+  args:
+    creates: /etc/kubernetes/admin.conf
+  register: kubeadm_init
+  when: inventory_hostname == groups['master'][0]
+
+- name: Copy admin.conf to home directory
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "{{ ansible_env.HOME }}/.kube/config"
+    remote_src: true
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  when: inventory_hostname == groups['master'][0]
+
+- name: Create .kube directory for other users
+  file:
+    path: "{{ ansible_env.HOME }}/.kube"
+    state: directory
+    mode: '0755'
+  when: inventory_hostname == groups['master'][0]
+
+- name: Extract certificate key from init output
+  set_fact:
+    certificate_key: "{{ kubeadm_init.stdout | regex_search('--certificate-key\\s+([a-zA-Z0-9]+)', multiline=True) | map('regex_replace', '.*--certificate-key\\s+([a-zA-Z0-9]+).*', '\\1') | select('match', '^[a-zA-Z0-9]+$') | first | default('') }}"
+  when: inventory_hostname == groups['master'][0] and kubeadm_init.stdout is defined
+
+- name: Alternative certificate key extraction
+  set_fact:
+    certificate_key: "{{ kubeadm_init.stdout_lines | select('match', '--certificate-key') | list | first | regex_replace('.*--certificate-key\\s+([a-zA-Z0-9]+).*', '\\1') | default('') }}"
+  when: 
+    - inventory_hostname == groups['master'][0]
+    - certificate_key is not defined or certificate_key == ''
+    - kubeadm_init.stdout is defined
+
+- name: Extract master join command
+  set_fact:
+    master_join_command: "{{ kubeadm_init.stdout_lines | select('match', 'kubeadm join.*--control-plane') | list | first | default('') }}"
+  when: inventory_hostname == groups['master'][0] and kubeadm_init.stdout is defined
+
+- name: Fail if certificate key not found
+  fail:
+    msg: "Certificate key not found in kubeadm init output"
+  when: 
+    - inventory_hostname == groups['master'][0]
+    - certificate_key is not defined or certificate_key == ''
+
+- name: Fail if master join command not found
+  fail:
+    msg: "Master join command not found in kubeadm init output"
+  when: 
+    - inventory_hostname == groups['master'][0]
+    - master_join_command is not defined or master_join_command == ''
+
+- name: Set master join command as fact for all nodes
+  set_fact:
+    master_join_command: "{{ hostvars[groups['master'][0]]['master_join_command'] }}"
+    certificate_key: "{{ hostvars[groups['master'][0]]['certificate_key'] }}"
+  when: 
+    - inventory_hostname != groups['master'][0]
+    - inventory_hostname in groups['master']
+    - hostvars[groups['master'][0]]['master_join_command'] is defined
+
+- name: Join additional master nodes
+  shell: "{{ master_join_command }} --certificate-key {{ certificate_key }}"
+  args:
+    creates: /etc/kubernetes/admin.conf
+  when: 
+    - inventory_hostname != groups['master'][0]
+    - inventory_hostname in groups['master']
+    - master_join_command is defined
+    - certificate_key is defined
+  register: master_join_result
+  failed_when: master_join_result.rc != 0 and "already a member" not in master_join_result.stderr
+
+- name: Copy admin.conf for additional masters
+  copy:
+    src: /etc/kubernetes/admin.conf
+    dest: "{{ ansible_env.HOME }}/.kube/config"
+    remote_src: true
+    owner: "{{ ansible_user }}"
+    group: "{{ ansible_user }}"
+    mode: '0600'
+  when: 
+    - inventory_hostname != groups['master'][0]
+    - inventory_hostname in groups['master']
+
+- name: Wait for master nodes to be ready
+  command: kubectl get nodes
+  register: kubectl_get_nodes
+  until: kubectl_get_nodes.rc == 0
+  retries: 30
+  delay: 10
+  when: inventory_hostname in groups['master']
+
+- name: Install Calico CNI (first master only)
+  command: kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/calico.yaml
+  when: 
+    - inventory_hostname == groups['master'][0]
+    - cni_provider == "calico"
+  retries: 5
+  delay: 10
+
+- name: Wait for CNI pods to be ready
+  command: kubectl get pods -n kube-system
+  register: cni_pods
+  until: "('calico-node' in cni_pods.stdout or 'calico-kube-controllers' in cni_pods.stdout) and 'Running' in cni_pods.stdout"
+  retries: 30
+  delay: 10
+  when: inventory_hostname == groups['master'][0]
+
+- name: Configure firewall for master nodes (firewalld)
+  firewalld:
+    port: "{{ item }}/tcp"
+    permanent: true
+    state: enabled
+    immediate: true
+  loop:
+    - "{{ api_server_port }}"
+    - "{{ etcd_client_port }}"
+    - "{{ etcd_peer_port }}"
+    - "{{ kubelet_port }}"
+    - "{{ kube_scheduler_port }}"
+    - "{{ kube_controller_manager_port }}"
+  when: 
+    - firewall_type in ["auto", "firewalld"]
+    - ansible_os_family in ["RedHat", "Debian"]
+  ignore_errors: true
+  tags: firewall
+
+- name: Configure firewall for master nodes (ufw)
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - "{{ api_server_port }}"
+    - "{{ etcd_client_port }}"
+    - "{{ etcd_peer_port }}"
+    - "{{ kubelet_port }}"
+    - "{{ kube_scheduler_port }}"
+    - "{{ kube_controller_manager_port }}"
+  when: 
+    - firewall_type in ["auto", "ufw"]
+    - ansible_os_family == "Debian"
+  ignore_errors: true
+  tags: firewall
+

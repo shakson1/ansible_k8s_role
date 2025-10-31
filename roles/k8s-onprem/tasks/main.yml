@@ -1,0 +1,43 @@
+---
+# Main tasks file for k8s-onprem role
+- name: Run pre-flight checks
+  include_tasks: preflight.yml
+  tags: always
+
+- name: Run prerequisites
+  include_tasks: prerequisites.yml
+
+- name: Install container runtime
+  include_tasks: containerd.yml
+  when: container_runtime == "containerd"
+
+- name: Install Kubernetes components
+  include_tasks: kubernetes.yml
+
+- name: Configure API server nodes
+  include_tasks: api-server.yml
+  when: inventory_hostname in groups['api-server']
+  tags: api-server
+
+- name: Configure master nodes
+  include_tasks: master.yml
+  when: inventory_hostname in groups['master']
+  tags: master
+
+- name: Configure worker nodes
+  include_tasks: worker.yml
+  when: inventory_hostname in groups['worker']
+  tags: worker
+
+- name: Install MetalLB
+  include_tasks: metallb.yml
+  when: 
+    - inventory_hostname == groups['master'][0]
+    - inventory_hostname in groups['master']
+
+- name: Install Istio
+  include_tasks: istio.yml
+  when: 
+    - inventory_hostname == groups['master'][0]
+    - inventory_hostname in groups['master']
+

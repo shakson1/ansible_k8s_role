@@ -1,0 +1,82 @@
+---
+# Pre-flight checks and validation
+- name: Validate inventory groups exist
+  assert:
+    that:
+      - groups['api-server'] is defined
+      - groups['master'] is defined
+      - groups['worker'] is defined
+    msg: "Required inventory groups (api-server, master, worker) must be defined"
+  when: not skip_validation | bool
+  tags: validation, preflight
+
+- name: Validate API server group has at least 2 nodes
+  assert:
+    that:
+      - groups['api-server'] | length >= 2
+    msg: "At least 2 API server nodes are required for HA"
+  when: not skip_validation | bool
+  tags: validation, preflight
+
+- name: Validate master group has nodes
+  assert:
+    that:
+      - groups['master'] | length >= 1
+    msg: "At least 1 master node is required"
+  when: not skip_validation | bool
+  tags: validation, preflight
+
+- name: Validate required variables are set
+  assert:
+    that:
+      - api_server_vip is defined
+      - api_server_vip != ''
+      - api_server_port is defined
+      - pod_network_cidr is defined
+      - service_cidr is defined
+    msg: "Required variables (api_server_vip, api_server_port, pod_network_cidr, service_cidr) must be set"
+  when: not skip_validation | bool
+  tags: validation, preflight
+
+- name: Check if API server VIP is already in use
+  command: ping -c 1 -W 1 {{ api_server_vip }}
+  register: vip_ping_check
+  changed_when: false
+  failed_when: false
+  when: not skip_validation | bool
+  tags: validation, preflight
+
+- name: Warn if API server VIP is pingable
+  debug:
+    msg: "WARNING: API server VIP {{ api_server_vip }} is already responding to ping. Ensure it's not in use!"
+  when: 
+    - not skip_validation | bool
+    - vip_ping_check.rc == 0
+  tags: validation, preflight
+
+- name: Check system requirements
+  assert:
+    that:
+      - ansible_processor_cores | length >= 2 or ansible_processor_count >= 2
+    msg: "Minimum 2 CPU cores required"
+    quiet: true
+  when: not skip_validation | bool
+  tags: validation, preflight
+
+- name: Check memory requirements
+  assert:
+    that:
+      - ansible_memtotal_mb >= 4096
+    msg: "Minimum 4GB RAM required (found {{ ansible_memtotal_mb }}MB)"
+    quiet: true
+  when: not skip_validation | bool
+  tags: validation, preflight
+
+- name: Check supported OS
+  assert:
+    that:
+      - ansible_os_family in ["Debian", "RedHat"]
+    msg: "Unsupported OS family: {{ ansible_os_family }}. Supported: Debian, RedHat"
+  when: not skip_validation | bool
+  tags: validation, preflight
+

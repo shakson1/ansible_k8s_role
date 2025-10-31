@@ -1,0 +1,53 @@
+---
+# Kubernetes Version
+k8s_version: "1.28.0"
+
+# Container Runtime
+container_runtime: "containerd"
+docker_version: "24.0"
+containerd_version: "1.7.0"
+
+# Network Configuration
+pod_network_cidr: "10.244.0.0/16"
+service_cidr: "10.96.0.0/12"
+
+# API Server Configuration
+api_server_vip: "192.168.1.100"  # Virtual IP for API server
+api_server_port: 6443
+
+# MetalLB Configuration
+metallb_version: "v0.13.12"
+metallb_address_pool: "192.168.1.200-192.168.1.250"
+
+# CNI Configuration
+cni_provider: "calico"
+calico_version: "v3.26.1"
+
+# Istio Configuration
+istio_version: "1.19.0"
+
+# System Configuration
+disable_swap: true
+disable_selinux: true
+enable_ip_forwarding: true
+
+# Firewall ports
+etcd_client_port: 2379
+etcd_peer_port: 2380
+kubelet_port: 10250
+kube_scheduler_port: 10259
+kube_controller_manager_port: 10257
+node_port_range: "30000-32767"
+
+# Keepalived Configuration (for API server VIP)
+keepalived_interface: "eth0"
+keepalived_priority: 100
+keepalived_virtual_router_id: 51
+keepalived_vip_netmask: 24
+
+# Firewall configuration
+firewall_type: "auto"  # auto, firewalld, ufw, or none
+
+# Validation and checks
+skip_validation: false
+

@@ -1,0 +1,30 @@
+global_defs {
+    router_id K8S_API_LB
+}
+
+vrrp_script chk_haproxy {
+    script "/bin/bash -c 'systemctl is-active --quiet haproxy'"
+    interval 2
+    weight -2
+    fall 3
+    rise 2
+}
+
+vrrp_instance VI_1 {
+    state {% if inventory_hostname == groups['api-server'][0] %}MASTER{% else %}BACKUP{% endif %}
+    interface {{ keepalived_interface }}
+    virtual_router_id {{ keepalived_virtual_router_id }}
+    priority {% if inventory_hostname == groups['api-server'][0] %}{{ keepalived_priority }}{% else %}{{ keepalived_priority - 10 }}{% endif %}
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass K8sApiPass
+    }
+    virtual_ipaddress {
+        {{ api_server_vip }}/{{ keepalived_vip_netmask }}
+    }
+    track_script {
+        chk_haproxy
+    }
+}
+

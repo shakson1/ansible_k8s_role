@@ -1,0 +1,75 @@
+---
+# Join worker nodes to the cluster
+- name: Wait for cluster to be ready
+  wait_for:
+    host: "{{ api_server_vip }}"
+    port: "{{ api_server_port }}"
+    delay: 30
+    timeout: 600
+  delegate_to: localhost
+
+- name: Get worker join command from first master
+  shell: kubeadm token create --print-join-command
+  register: worker_join_command
+  delegate_to: "{{ groups['master'][0] }}"
+  become: true
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+
+- name: Update worker join command to use API server VIP
+  set_fact:
+    worker_join_command_updated: "{{ worker_join_command.stdout | regex_replace('kubeadm join\\s+[0-9.]+:[0-9]+', 'kubeadm join ' + api_server_vip + ':' + (api_server_port | string)) }}"
+  when: worker_join_command.stdout is defined and worker_join_command.stdout != ''
+
+- name: Fail if worker join command is empty
+  fail:
+    msg: "Failed to get worker join command from master node"
+  when: worker_join_command_updated is not defined or worker_join_command_updated == ''
+
+- name: Join worker node to cluster
+  shell: "{{ worker_join_command_updated }}"
+  args:
+    creates: /etc/kubernetes/kubelet.conf
+  when: worker_join_command_updated is defined
+  register: worker_join_result
+  failed_when: worker_join_result.rc != 0 and "already a member" not in worker_join_result.stderr
+
+- name: Configure firewall for worker nodes (firewalld)
+  firewalld:
+    port: "{{ item }}/tcp"
+    permanent: true
+    state: enabled
+    immediate: true
+  loop:
+    - "{{ kubelet_port }}"
+    - "{{ node_port_range.split('-')[0] }}:{{ node_port_range.split('-')[1] }}/tcp"
+  when: 
+    - firewall_type in ["auto", "firewalld"]
+    - ansible_os_family in ["RedHat", "Debian"]
+  ignore_errors: true
+  tags: firewall
+
+- name: Configure firewall for worker nodes (ufw)
+  ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop:
+    - "{{ kubelet_port }}"
+  when: 
+    - firewall_type in ["auto", "ufw"]
+    - ansible_os_family == "Debian"
+  ignore_errors: true
+  tags: firewall
+
+- name: Configure firewall for worker nodes - NodePort range (ufw)
+  ufw:
+    rule: allow
+    port: "{{ node_port_range.split('-')[0] }}:{{ node_port_range.split('-')[1] }}"
+    proto: tcp
+  when: 
+    - firewall_type in ["auto", "ufw"]
+    - ansible_os_family == "Debian"
+  ignore_errors: true
+  tags: firewall
+

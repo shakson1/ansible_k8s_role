@@ -1,0 +1,38 @@
+---
+# Install and configure keepalived for API server VIP
+- name: Install keepalived
+  package:
+    name: keepalived
+    state: present
+  tags: keepalived, packages
+
+- name: Configure keepalived
+  template:
+    src: keepalived.conf.j2
+    dest: /etc/keepalived/keepalived.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart keepalived
+  tags: keepalived
+
+- name: Start and enable keepalived
+  systemd:
+    name: keepalived
+    enabled: true
+    state: started
+    daemon_reload: true
+  tags: keepalived
+
+- name: Wait for keepalived to initialize
+  pause:
+    seconds: 5
+  tags: keepalived
+
+- name: Verify keepalived status
+  command: systemctl is-active keepalived
+  register: keepalived_status
+  changed_when: false
+  failed_when: keepalived_status.rc != 0
+  tags: keepalived
+
