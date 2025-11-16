@@ -2,12 +2,35 @@
 # Install MetalLB
 - name: Apply MetalLB manifest
   command: kubectl apply -f https://raw.githubusercontent.com/metallb/metallb/{{ metallb_version }}/config/manifests/metallb-native.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   when: inventory_hostname == groups['master'][0]
   retries: 3
   delay: 10
 
-- name: Wait for MetalLB to be ready
-  command: kubectl wait --namespace metallb-system --for=condition=ready pod --selector=app=metallb --timeout=300s
+- name: Wait for MetalLB namespace to be created
+  command: kubectl get namespace metallb-system
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: metallb_namespace
+  until: metallb_namespace.rc == 0
+  retries: 10
+  delay: 5
+  when: inventory_hostname == groups['master'][0]
+
+- name: Wait for MetalLB controller to be ready
+  command: kubectl wait --namespace metallb-system --for=condition=ready pod --selector=app=metallb,component=controller --timeout=300s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: inventory_hostname == groups['master'][0]
+  retries: 10
+  delay: 10
+  ignore_errors: true
+
+- name: Wait for MetalLB speaker pods to be ready
+  command: kubectl wait --namespace metallb-system --for=condition=ready pod --selector=app=metallb,component=speaker --timeout=300s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   when: inventory_hostname == groups['master'][0]
   retries: 10
   delay: 10
@@ -22,5 +45,17 @@
 
 - name: Apply MetalLB IP address pool
   command: kubectl apply -f /tmp/metallb-ip-pool.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: inventory_hostname == groups['master'][0]
+
+- name: Verify MetalLB IP address pool is created
+  command: kubectl get ipaddresspool default-pool -n metallb-system
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: metallb_pool
+  until: metallb_pool.rc == 0
+  retries: 5
+  delay: 5
   when: inventory_hostname == groups['master'][0]
 

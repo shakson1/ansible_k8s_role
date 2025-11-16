@@ -6,13 +6,16 @@
 
 - name: Run prerequisites
   include_tasks: prerequisites.yml
+  tags: prerequisites
 
 - name: Install container runtime
   include_tasks: containerd.yml
   when: container_runtime == "containerd"
+  tags: containerd
 
 - name: Install Kubernetes components
   include_tasks: kubernetes.yml
+  tags: kubernetes
 
 - name: Configure API server nodes
   include_tasks: api-server.yml
@@ -34,10 +37,12 @@
   when: 
     - inventory_hostname == groups['master'][0]
     - inventory_hostname in groups['master']
+  tags: metallb
 
 - name: Install Istio
   include_tasks: istio.yml
   when: 
     - inventory_hostname == groups['master'][0]
     - inventory_hostname in groups['master']
+  tags: istio
 

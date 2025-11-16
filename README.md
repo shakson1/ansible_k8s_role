@@ -466,6 +466,15 @@ ansible_kubernetes/
 - Validates join commands before execution
 - Handles "already a member" scenarios gracefully
 - Better error messages for troubleshooting
+- Smart certificate key detection (avoids duplicate keys in join commands)
+- Comprehensive retry logic with proper delays
+
+### Deployment Reliability
+- Waits for all master nodes to be ready before installing addons
+- Waits for all masters before joining worker nodes
+- Improved CNI pod readiness checks (waits for all pods, not just one)
+- Better MetalLB and Istio installation with namespace verification
+- All kubectl commands use proper KUBECONFIG environment variable
 
 ### Tags for Selective Execution
 You can run specific parts of the playbook using tags:
@@ -486,9 +495,13 @@ ansible-playbook -i inventory playbook.yml -e skip_validation=true
 
 Available tags:
 - `prerequisites` - System prerequisites
+- `containerd` - Container runtime installation
+- `kubernetes` - Kubernetes components installation
 - `api-server` - API server nodes
 - `master` - Master nodes
 - `worker` - Worker nodes
+- `metallb` - MetalLB installation
+- `istio` - Istio installation
 - `firewall` - Firewall configuration
 - `preflight` - Pre-flight checks
 - `validation` - Validation tasks
@@ -503,6 +516,11 @@ Available tags:
 - Calico is used as the CNI provider (configurable)
 - Sysctl settings are persisted in `/etc/sysctl.d/99-kubernetes.conf`
 - Kernel modules (br_netfilter, overlay) are checked before loading
+- All kubectl commands use KUBECONFIG environment variable for proper authentication
+- Worker nodes wait for all masters to be ready before joining
+- CNI installation waits for all pods to be in Ready state
+- MetalLB and Istio installations include namespace and pod readiness verification
+- Master join commands intelligently detect if certificate key is already included
 
 ## Contributing
 

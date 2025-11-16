@@ -71,7 +71,15 @@
     - inventory_hostname in groups['master']
     - hostvars[groups['master'][0]]['master_join_command'] is defined
 
-- name: Join additional master nodes
+- name: Check if certificate key is already in join command
+  set_fact:
+    join_command_has_cert_key: "{{ '--certificate-key' in master_join_command }}"
+  when: 
+    - inventory_hostname != groups['master'][0]
+    - inventory_hostname in groups['master']
+    - master_join_command is defined
+
+- name: Join additional master nodes (with certificate key)
   shell: "{{ master_join_command }} --certificate-key {{ certificate_key }}"
   args:
     creates: /etc/kubernetes/admin.conf
@@ -80,6 +88,19 @@
     - inventory_hostname in groups['master']
     - master_join_command is defined
     - certificate_key is defined
+    - not (join_command_has_cert_key | default(false))
+  register: master_join_result
+  failed_when: master_join_result.rc != 0 and "already a member" not in master_join_result.stderr
+
+- name: Join additional master nodes (certificate key already in command)
+  shell: "{{ master_join_command }}"
+  args:
+    creates: /etc/kubernetes/admin.conf
+  when: 
+    - inventory_hostname != groups['master'][0]
+    - inventory_hostname in groups['master']
+    - master_join_command is defined
+    - join_command_has_cert_key | default(false)
   register: master_join_result
   failed_when: master_join_result.rc != 0 and "already a member" not in master_join_result.stderr
 
@@ -97,27 +118,61 @@
 
 - name: Wait for master nodes to be ready
   command: kubectl get nodes
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   register: kubectl_get_nodes
   until: kubectl_get_nodes.rc == 0
   retries: 30
   delay: 10
   when: inventory_hostname in groups['master']
 
+- name: Wait for all master nodes to be in Ready state
+  command: kubectl get nodes --no-headers | grep -c " Ready " || echo "0"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: ready_masters
+  until: ready_masters.stdout | int >= groups['master'] | length
+  retries: 30
+  delay: 10
+  when: inventory_hostname == groups['master'][0]
+
 - name: Install Calico CNI (first master only)
   command: kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/{{ calico_version }}/manifests/calico.yaml
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
   when: 
     - inventory_hostname == groups['master'][0]
     - cni_provider == "calico"
   retries: 5
   delay: 10
 
-- name: Wait for CNI pods to be ready
-  command: kubectl get pods -n kube-system
-  register: cni_pods
-  until: "('calico-node' in cni_pods.stdout or 'calico-kube-controllers' in cni_pods.stdout) and 'Running' in cni_pods.stdout"
-  retries: 30
-  delay: 10
+- name: Wait for Calico pods to be created
+  command: kubectl get pods -n kube-system -l k8s-app=calico-node --no-headers
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: calico_pods
+  until: calico_pods.rc == 0 and calico_pods.stdout != ''
+  retries: 10
+  delay: 5
   when: inventory_hostname == groups['master'][0]
+
+- name: Wait for all CNI pods to be ready
+  command: kubectl wait --for=condition=ready pod -l k8s-app=calico-node -n kube-system --timeout=300s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: inventory_hostname == groups['master'][0]
+  retries: 10
+  delay: 10
+  ignore_errors: true
+
+- name: Wait for Calico kube-controllers to be ready
+  command: kubectl wait --for=condition=ready pod -l k8s-app=calico-kube-controllers -n kube-system --timeout=300s
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  when: inventory_hostname == groups['master'][0]
+  retries: 10
+  delay: 10
+  ignore_errors: true
 
 - name: Configure firewall for master nodes (firewalld)
   firewalld:

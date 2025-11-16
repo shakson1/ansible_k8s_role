@@ -7,6 +7,19 @@
     delay: 30
     timeout: 600
   delegate_to: localhost
+  retries: 5
+  delay: 10
+
+- name: Wait for all master nodes to be ready before joining workers
+  command: kubectl get nodes --no-headers | grep -c " Ready " || echo "0"
+  environment:
+    KUBECONFIG: /etc/kubernetes/admin.conf
+  register: ready_nodes
+  delegate_to: "{{ groups['master'][0] }}"
+  become: true
+  until: ready_nodes.stdout | int >= groups['master'] | length
+  retries: 30
+  delay: 10
 
 - name: Get worker join command from first master
   shell: kubeadm token create --print-join-command
